@@ -1,0 +1,325 @@
+LinkedIn Profile Saver GUI Fork
+================================
+
+Overview
+--------
+
+This fork adds a simple desktop GUI to the existing LinkedIn scraper project.
+
+The goal is to make the tool usable by non-technical users who do not want to run command-line scripts directly. The app lets a user log into LinkedIn manually through a browser window, paste one LinkedIn profile URL, and save that profile's data as both Markdown and JSON.
+
+The current version is intentionally minimal and controlled. It is best understood as an MVP GUI wrapper around the original Playwright-based LinkedIn scraper.
+
+What the GUI Does
+-----------------
+
+The GUI turns the original command-line LinkedIn scraper into a simple desktop app for saving one LinkedIn profile at a time.
+
+Instead of asking a user to manually run Python scripts, edit .env files, or manage session files, the GUI provides a small window with:
+
+- A login button
+- A LinkedIn profile URL input box
+- An output folder selector
+- A scrape button
+- A status/log window
+
+The user logs into LinkedIn themselves in a normal browser window. The app does not ask for or store their LinkedIn username or password.
+
+Core Features
+-------------
+
+1. Manual LinkedIn Login
+
+The GUI opens a normal browser window where the user logs into LinkedIn manually.
+
+This means:
+
+- The app does not ask for the user's LinkedIn password.
+- The app does not store the user's LinkedIn password.
+- The app does not embed credentials in the code.
+- The user completes any 2FA or CAPTCHA directly on LinkedIn.
+- Login happens through LinkedIn's own page, not through a custom form.
+
+2. Saved Local Session
+
+After the user logs in, the GUI saves a local browser session file:
+
+.linkedin_gui_session.json
+
+This file contains browser session/cookie data, not the raw password.
+
+The purpose of this file is to let the app reuse the login session so the user does not need to log in again every time they open the app.
+
+This file should not be shared or committed to GitHub. It should be listed in .gitignore.
+
+3. One-Profile-at-a-Time Workflow
+
+The GUI accepts one LinkedIn profile URL at a time, such as:
+
+https://www.linkedin.com/in/example/
+
+It then uses the existing PersonScraper from the original project to scrape that single profile.
+
+This keeps the workflow simple, understandable, and less risky than bulk scraping.
+
+4. Markdown and JSON Output
+
+For each saved profile, the GUI creates two files:
+
+Person_Name.md
+Person_Name.json
+
+The JSON file preserves the structured profile data.
+
+The Markdown file is human-readable and useful for:
+
+- Obsidian notes
+- CRM-style folders
+- Recruiting notes
+- Research notes
+- Candidate/client/person profiles
+- Manual review and organization
+
+5. Output Folder Selection
+
+The user can choose where saved profiles go.
+
+By default, the GUI saves output to:
+
+output/
+
+6. Status and Log Window
+
+The GUI includes a log box that shows what the app is doing.
+
+Example messages include:
+
+- Opening LinkedIn login window...
+- Waiting for login...
+- Login session saved.
+- Scraping profile...
+- Saving Markdown and JSON...
+
+This helps non-technical users understand what is happening.
+
+How to Use the GUI
+------------------
+
+1. Install the Project
+
+Clone the fork:
+
+git clone https://github.com/breadmitch/linkedin_scraper.git
+cd linkedin_scraper
+
+2. Create a Virtual Environment
+
+Run:
+
+python -m venv .venv
+
+3. Activate the Virtual Environment
+
+On Windows PowerShell:
+
+.\.venv\Scripts\Activate.ps1
+
+If PowerShell blocks activation, run:
+
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+Then try activation again:
+
+.\.venv\Scripts\Activate.ps1
+
+4. Install Dependencies
+
+Run:
+
+pip install -e .
+pip install -r requirements-gui.txt
+playwright install chromium
+
+5. Start the GUI
+
+Run:
+
+python gui.py
+
+6. Login Workflow
+
+When the app opens:
+
+1. Click "Login to LinkedIn".
+2. A browser window opens.
+3. Log into LinkedIn manually.
+4. Complete any 2FA or CAPTCHA if LinkedIn asks.
+5. Wait for the app to detect login.
+6. The app saves the local session file.
+
+7. Scrape a Profile
+
+After login:
+
+1. Paste a LinkedIn profile URL into the URL field.
+2. Choose an output folder, or keep the default output folder.
+3. Click "Scrape One Profile".
+4. Wait for the scrape to finish.
+5. Open the output folder.
+6. Look for the .md and .json files.
+
+What This GUI Does Not Do
+-------------------------
+
+This GUI is intentionally limited.
+
+It does not:
+
+- Store LinkedIn passwords
+- Ask for LinkedIn credentials in the app
+- Use a .env file for login
+- Bypass LinkedIn login
+- Bypass CAPTCHA
+- Bypass 2FA
+- Bypass LinkedIn access controls
+- Bulk scrape profiles
+- Scrape without a logged-in LinkedIn session
+- Hide the login process from the user
+- Run as a packaged Windows installer yet
+
+Current Practical Use Case
+--------------------------
+
+This is a desktop LinkedIn profile saver for non-technical users.
+
+The user logs into LinkedIn normally, pastes one profile URL, and the app saves the profile as both Markdown and JSON for later review or organization.
+
+Good use cases include:
+
+- Recruiting research
+- Candidate notes
+- Sales/contact research
+- CRM-style profile folders
+- Personal networking notes
+- Obsidian profile vaults
+- Manual profile archiving for review
+
+Pitch Summary
+-------------
+
+This fork adds a simple desktop GUI to the existing LinkedIn scraper project. The goal is to make the tool usable by non-technical users who do not want to run command-line scripts.
+
+The app opens a browser window where the user logs into LinkedIn manually, so the tool never asks for or stores their LinkedIn password. Once logged in, the app saves a local session file and lets the user paste one LinkedIn profile URL at a time. It then saves the profile data as both Markdown and JSON in a chosen output folder.
+
+The current version is intentionally minimal and controlled: it is not a bulk scraper, does not bypass login or CAPTCHA, and is focused on one-profile-at-a-time profile saving for research, recruiting, CRM notes, or personal organization.
+
+Feature List
+------------
+
+- Desktop GUI built with PyQt6
+- Manual LinkedIn login through browser
+- No password storage
+- Reusable local session
+- Single-profile URL input
+- One-click profile saving
+- Markdown output
+- JSON output
+- Output folder selection
+- Status/log window
+- Non-technical user workflow
+- Built on existing Playwright scraper
+
+Limitations
+-----------
+
+- Requires a LinkedIn account
+- Requires manual login
+- Only supports one profile at a time in the GUI
+- Profile access depends on what the logged-in LinkedIn account can see
+- LinkedIn page changes may break scraping selectors
+- No packaged .exe yet
+- No installer yet
+- No bulk CSV import yet
+- No profile preview before saving yet
+- No company profile GUI mode yet
+- No job posting GUI mode yet
+
+Security and Privacy Notes
+--------------------------
+
+The GUI does not store the user's LinkedIn password.
+
+The user logs into LinkedIn directly in a browser window. The app saves a local browser session file so the user does not need to log in every time.
+
+The local session file is:
+
+.linkedin_gui_session.json
+
+This file should be treated like a sensitive browser cookie/session file.
+
+Users should not:
+
+- Share this file
+- Upload this file
+- Commit this file to GitHub
+- Send this file to anyone else
+
+Recommended Future Improvements
+-------------------------------
+
+Good next steps for future versions:
+
+1. Package as a Windows .exe
+
+This would let non-technical users run the app without manually using Python.
+
+2. Add an Installer
+
+A simple installer would make distribution easier.
+
+3. Add an "Open Output Folder" Button
+
+After scraping, the user could click a button to open the folder containing the saved files.
+
+4. Add CSV Input for Controlled Batch Mode
+
+A future version could accept a CSV of profile URLs. This should be done carefully and responsibly, with limits and clear user control.
+
+5. Add a Progress Bar
+
+The log window works, but a progress bar would make the app feel more polished.
+
+6. Add Profile Preview Before Saving
+
+The app could show a preview of the scraped profile before writing files.
+
+7. Add Markdown Template Options
+
+Different users may want different Markdown formats for Obsidian, CRM folders, or recruiting notes.
+
+8. Add Company Profile Mode
+
+The original project supports company scraping. A future GUI tab could expose that feature.
+
+9. Add Job Posting Mode
+
+The original project supports job scraping. A future GUI tab could expose that feature.
+
+10. Add Better Error Messages
+
+The GUI could translate technical errors into friendlier messages, such as:
+
+- "Your session expired. Please log in again."
+- "This profile may be private or unavailable."
+- "LinkedIn changed the page layout, so this field could not be read."
+
+Best Way to Describe the Current Version
+----------------------------------------
+
+The current version is best described as:
+
+"A minimal desktop GUI wrapper for saving one LinkedIn profile at a time as Markdown and JSON, using manual LinkedIn login and local session reuse."
+
+It is an MVP, not a finished commercial application.
+
+It proves the workflow and makes the original scraper easier for regular users to try.
