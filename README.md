@@ -1,3 +1,82 @@
+﻿# LinkedIn Profile Saver GUI Fork
+
+This fork adds a simple desktop GUI for saving one LinkedIn profile at a time.
+
+The GUI is intended for non-technical users. It does not ask for or store a LinkedIn username or password. Instead, it opens a normal browser window and lets the user log into LinkedIn manually. After login, the app saves a local browser session file and reuses that session for profile saving.
+
+## What this fork adds
+
+- Simple PyQt6 desktop GUI
+- Manual LinkedIn login through a browser window
+- One-profile-at-a-time workflow
+- Markdown and JSON output
+- Local session reuse
+- No embedded LinkedIn credentials
+
+## What it does not do
+
+- It does not store LinkedIn passwords
+- It does not bypass login, CAPTCHA, 2FA, or LinkedIn access controls
+- It does not bulk scrape profiles
+- It does not scrape without a logged-in LinkedIn session
+
+## Install and run the GUI
+
+Clone this fork:
+
+    git clone https://github.com/breadmitch/linkedin_scraper.git
+    cd linkedin_scraper
+
+Create a virtual environment:
+
+    python -m venv .venv
+
+Activate it on Windows PowerShell:
+
+    .\.venv\Scripts\Activate.ps1
+
+If PowerShell blocks activation, run:
+
+    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+Then activate again:
+
+    .\.venv\Scripts\Activate.ps1
+
+Install the project and GUI dependency:
+
+    pip install -e .
+    pip install -r requirements-gui.txt
+    playwright install chromium
+
+Run the GUI:
+
+    python gui.py
+
+## GUI workflow
+
+1. Open the app with python gui.py
+2. Click Login to LinkedIn
+3. Log into LinkedIn manually in the browser window
+4. Paste one LinkedIn profile URL into the app
+5. Click Scrape One Profile
+6. Find the saved .md and .json files in the output folder
+
+## Local session file
+
+The GUI saves a local session file named:
+
+    .linkedin_gui_session.json
+
+This file contains browser session data/cookies. It should not be shared or committed to GitHub. It is ignored by Git in this fork.
+
+---
+
+## Original Project README
+
+The original upstream README continues below for reference.
+
+
 # LinkedIn Scraper
 
 [![PyPI version](https://badge.fury.io/py/linkedin-scraper.svg)](https://badge.fury.io/py/linkedin-scraper)
@@ -6,7 +85,7 @@
 
 Async LinkedIn scraper built with Playwright for extracting profile, company, and job data from LinkedIn.
 
-## ⚠️ Breaking Changes in v3.0.0
+## âš ï¸ Breaking Changes in v3.0.0
 
 **Version 3.0.0 introduces breaking changes and is NOT backwards compatible with previous versions.**
 
@@ -225,7 +304,7 @@ async def create_session():
         
         # Save session
         await browser.save_session("session.json")
-        print("✓ Session saved!")
+        print("âœ“ Session saved!")
 
 asyncio.run(create_session())
 ```
@@ -422,3 +501,4 @@ This tool is for educational purposes only. Make sure to comply with LinkedIn's 
 - [GitHub Repository](https://github.com/joeyism/linkedin_scraper)
 - [Issue Tracker](https://github.com/joeyism/linkedin_scraper/issues)
 - [PyPI Package](https://pypi.org/project/linkedin-scraper/)
+
