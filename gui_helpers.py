@@ -4,6 +4,16 @@ import json
 import re
 
 
+DEFAULT_SECTIONS = {
+    "about": True,
+    "experiences": True,
+    "educations": True,
+    "interests": False,
+    "accomplishments": False,
+    "contacts": False,
+}
+
+
 def safe_filename(text: str) -> str:
     text = text.strip() or "linkedin_profile"
     text = re.sub(r"[^\w\s-]", "", text)
@@ -19,18 +29,53 @@ def model_to_dict(model):
     return dict(model)
 
 
-def profile_to_markdown(person_data: dict) -> str:
+def normalize_sections(sections: dict | None) -> dict:
+    if sections is None:
+        return DEFAULT_SECTIONS.copy()
+
+    normalized = DEFAULT_SECTIONS.copy()
+    normalized.update(sections)
+    return normalized
+
+
+def filtered_profile_data(person_data: dict, sections: dict | None = None) -> dict:
+    sections = normalize_sections(sections)
+
+    filtered = {
+        "linkedin_url": person_data.get("linkedin_url"),
+        "name": person_data.get("name"),
+        "location": person_data.get("location"),
+        "open_to_work": person_data.get("open_to_work", False),
+    }
+
+    if sections.get("about"):
+        filtered["about"] = person_data.get("about")
+
+    if sections.get("experiences"):
+        filtered["experiences"] = person_data.get("experiences") or []
+
+    if sections.get("educations"):
+        filtered["educations"] = person_data.get("educations") or []
+
+    if sections.get("interests"):
+        filtered["interests"] = person_data.get("interests") or []
+
+    if sections.get("accomplishments"):
+        filtered["accomplishments"] = person_data.get("accomplishments") or []
+
+    if sections.get("contacts"):
+        filtered["contacts"] = person_data.get("contacts") or []
+
+    return filtered
+
+
+def profile_to_markdown(person_data: dict, sections: dict | None = None) -> str:
+    sections = normalize_sections(sections)
+
     name = person_data.get("name") or "Unknown Profile"
     location = person_data.get("location") or ""
-    about = person_data.get("about") or ""
     linkedin_url = person_data.get("linkedin_url") or ""
     open_to_work = person_data.get("open_to_work", False)
-
-    experiences = person_data.get("experiences") or []
-    educations = person_data.get("educations") or []
-    interests = person_data.get("interests") or []
-    accomplishments = person_data.get("accomplishments") or []
-    contacts = person_data.get("contacts") or []
 
     created = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -47,152 +92,167 @@ tags:
 
 # {name}
 
-## Location
+## Basic Profile Info
 
-{location or "_No location found._"}
+**Name:** {name}
 
-## LinkedIn URL
+**Location:** {location or "_No location found._"}
 
-{linkedin_url or "_No URL found._"}
+**LinkedIn URL:** {linkedin_url or "_No URL found._"}
 
-## Open To Work
-
-{open_to_work}
-
-## About
-
-{about or "_No about section found._"}
-
-## Experience
+**Open To Work:** {open_to_work}
 
 """
 
-    if experiences:
-        for exp in experiences:
-            title = exp.get("position_title") or "Untitled role"
-            company = exp.get("institution_name") or ""
-            from_date = exp.get("from_date") or ""
-            to_date = exp.get("to_date") or ""
-            duration = exp.get("duration") or ""
-            exp_location = exp.get("location") or ""
-            description = exp.get("description") or ""
-            exp_url = exp.get("linkedin_url") or ""
+    if sections.get("about"):
+        about = person_data.get("about") or ""
+        md += f"""## About
 
-            md += f"### {title}\n\n"
-            if company:
-                md += f"**Company:** {company}\n\n"
-            if from_date or to_date:
-                md += f"**Dates:** {from_date} - {to_date}\n\n"
-            if duration:
-                md += f"**Duration:** {duration}\n\n"
-            if exp_location:
-                md += f"**Location:** {exp_location}\n\n"
-            if exp_url:
-                md += f"**LinkedIn:** {exp_url}\n\n"
-            if description:
-                md += f"{description}\n\n"
-    else:
-        md += "_No experience found._\n\n"
+{about or "_No about section found._"}
 
-    md += "## Education\n\n"
+"""
 
-    if educations:
-        for edu in educations:
-            school = edu.get("institution_name") or "Unknown school"
-            degree = edu.get("degree") or ""
-            from_date = edu.get("from_date") or ""
-            to_date = edu.get("to_date") or ""
-            description = edu.get("description") or ""
-            edu_url = edu.get("linkedin_url") or ""
+    if sections.get("experiences"):
+        experiences = person_data.get("experiences") or []
+        md += "## Employment History\n\n"
 
-            md += f"### {school}\n\n"
-            if degree:
-                md += f"**Degree:** {degree}\n\n"
-            if from_date or to_date:
-                md += f"**Dates:** {from_date} - {to_date}\n\n"
-            if edu_url:
-                md += f"**LinkedIn:** {edu_url}\n\n"
-            if description:
-                md += f"{description}\n\n"
-    else:
-        md += "_No education found._\n\n"
+        if experiences:
+            for exp in experiences:
+                title = exp.get("position_title") or "Untitled role"
+                company = exp.get("institution_name") or ""
+                from_date = exp.get("from_date") or ""
+                to_date = exp.get("to_date") or ""
+                duration = exp.get("duration") or ""
+                exp_location = exp.get("location") or ""
+                description = exp.get("description") or ""
+                exp_url = exp.get("linkedin_url") or ""
 
-    md += "## Interests\n\n"
+                md += f"### {title}\n\n"
+                if company:
+                    md += f"**Company:** {company}\n\n"
+                if from_date or to_date:
+                    md += f"**Dates:** {from_date} - {to_date}\n\n"
+                if duration:
+                    md += f"**Duration:** {duration}\n\n"
+                if exp_location:
+                    md += f"**Location:** {exp_location}\n\n"
+                if exp_url:
+                    md += f"**LinkedIn:** {exp_url}\n\n"
+                if description:
+                    md += f"{description}\n\n"
+        else:
+            md += "_No employment history found._\n\n"
 
-    if interests:
-        for interest in interests:
-            interest_name = interest.get("name") or ""
-            category = interest.get("category") or ""
-            url = interest.get("linkedin_url") or ""
+    if sections.get("educations"):
+        educations = person_data.get("educations") or []
+        md += "## Education\n\n"
 
-            md += f"- {interest_name}"
-            if category:
-                md += f" ({category})"
-            if url:
-                md += f" — {url}"
+        if educations:
+            for edu in educations:
+                school = edu.get("institution_name") or "Unknown school"
+                degree = edu.get("degree") or ""
+                from_date = edu.get("from_date") or ""
+                to_date = edu.get("to_date") or ""
+                description = edu.get("description") or ""
+                edu_url = edu.get("linkedin_url") or ""
+
+                md += f"### {school}\n\n"
+                if degree:
+                    md += f"**Degree:** {degree}\n\n"
+                if from_date or to_date:
+                    md += f"**Dates:** {from_date} - {to_date}\n\n"
+                if edu_url:
+                    md += f"**LinkedIn:** {edu_url}\n\n"
+                if description:
+                    md += f"{description}\n\n"
+        else:
+            md += "_No education found._\n\n"
+
+    if sections.get("interests"):
+        interests = person_data.get("interests") or []
+        md += "## Interests\n\n"
+
+        if interests:
+            for interest in interests:
+                interest_name = interest.get("name") or ""
+                category = interest.get("category") or ""
+                url = interest.get("linkedin_url") or ""
+
+                md += f"- {interest_name}"
+                if category:
+                    md += f" ({category})"
+                if url:
+                    md += f" - {url}"
+                md += "\n"
             md += "\n"
-    else:
-        md += "_No interests found._\n"
+        else:
+            md += "_No interests found._\n\n"
 
-    md += "\n## Accomplishments\n\n"
+    if sections.get("accomplishments"):
+        accomplishments = person_data.get("accomplishments") or []
+        md += "## Accomplishments\n\n"
 
-    if accomplishments:
-        for acc in accomplishments:
-            title = acc.get("title") or "Untitled accomplishment"
-            category = acc.get("category") or ""
-            issuer = acc.get("issuer") or ""
-            issued_date = acc.get("issued_date") or ""
-            description = acc.get("description") or ""
+        if accomplishments:
+            for acc in accomplishments:
+                title = acc.get("title") or "Untitled accomplishment"
+                category = acc.get("category") or ""
+                issuer = acc.get("issuer") or ""
+                issued_date = acc.get("issued_date") or ""
+                description = acc.get("description") or ""
 
-            md += f"### {title}\n\n"
-            if category:
-                md += f"**Category:** {category}\n\n"
-            if issuer:
-                md += f"**Issuer:** {issuer}\n\n"
-            if issued_date:
-                md += f"**Issued:** {issued_date}\n\n"
-            if description:
-                md += f"{description}\n\n"
-    else:
-        md += "_No accomplishments found._\n"
+                md += f"### {title}\n\n"
+                if category:
+                    md += f"**Category:** {category}\n\n"
+                if issuer:
+                    md += f"**Issuer:** {issuer}\n\n"
+                if issued_date:
+                    md += f"**Issued:** {issued_date}\n\n"
+                if description:
+                    md += f"{description}\n\n"
+        else:
+            md += "_No accomplishments found._\n\n"
 
-    md += "\n## Contacts\n\n"
+    if sections.get("contacts"):
+        contacts = person_data.get("contacts") or []
+        md += "## Contacts\n\n"
 
-    if contacts:
-        for contact in contacts:
-            contact_type = contact.get("type") or "contact"
-            value = contact.get("value") or ""
-            label = contact.get("label") or ""
+        if contacts:
+            for contact in contacts:
+                contact_type = contact.get("type") or "contact"
+                value = contact.get("value") or ""
+                label = contact.get("label") or ""
 
-            md += f"- **{contact_type}:** {value}"
-            if label:
-                md += f" ({label})"
+                md += f"- **{contact_type}:** {value}"
+                if label:
+                    md += f" ({label})"
+                md += "\n"
             md += "\n"
-    else:
-        md += "_No contacts found._\n"
+        else:
+            md += "_No contacts found._\n\n"
 
     return md
 
 
-def save_profile_outputs(person_data: dict, output_dir: str):
+def save_profile_outputs(person_data: dict, output_dir: str, sections: dict | None = None):
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     name = person_data.get("name") or "linkedin_profile"
     base_name = safe_filename(name)
 
+    filtered_data = filtered_profile_data(person_data, sections)
+
     json_path = output_path / f"{base_name}.json"
     md_path = output_path / f"{base_name}.md"
 
     json_path.write_text(
-        json.dumps(person_data, indent=2, ensure_ascii=False),
+        json.dumps(filtered_data, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
 
     md_path.write_text(
-        profile_to_markdown(person_data),
+        profile_to_markdown(person_data, sections),
         encoding="utf-8",
     )
 
     return md_path, json_path
-

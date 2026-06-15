@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QSpinBox,
+    QCheckBox,
+    QGroupBox,
 )
 
 from linkedin_scraper import BrowserManager, PersonScraper, wait_for_manual_login
@@ -37,7 +39,6 @@ def normalize_urls(raw_text: str) -> list[str]:
         if "linkedin.com/in/" not in line:
             continue
 
-        # Remove obvious trailing junk
         line = line.split()[0].strip()
 
         if line not in urls:
@@ -81,11 +82,18 @@ class BatchScrapeWorker(QThread):
     log = pyqtSignal(str)
     done = pyqtSignal(bool, str)
 
-    def __init__(self, profile_urls: list[str], output_dir: str, delay_seconds: int):
+    def __init__(
+        self,
+        profile_urls: list[str],
+        output_dir: str,
+        delay_seconds: int,
+        selected_sections: dict,
+    ):
         super().__init__()
         self.profile_urls = profile_urls
         self.output_dir = output_dir
         self.delay_seconds = delay_seconds
+        self.selected_sections = selected_sections
 
     def run(self):
         try:
@@ -100,8 +108,13 @@ class BatchScrapeWorker(QThread):
         failed_count = 0
         saved_files = []
 
-        self.log.emit(f"Opening browser with saved login session...")
+        selected_names = [
+            name for name, enabled in self.selected_sections.items() if enabled
+        ]
+
+        self.log.emit("Opening browser with saved login session...")
         self.log.emit(f"Profiles queued: {total}")
+        self.log.emit(f"Saved sections: basic profile info, {', '.join(selected_names) if selected_names else 'no optional sections'}")
 
         async with BrowserManager(headless=False) as browser:
             await browser.load_session(SESSION_PATH)
@@ -116,7 +129,11 @@ class BatchScrapeWorker(QThread):
                     person = await scraper.scrape(profile_url)
                     person_data = model_to_dict(person)
 
-                    md_path, json_path = save_profile_outputs(person_data, self.output_dir)
+                    md_path, json_path = save_profile_outputs(
+                        person_data,
+                        self.output_dir,
+                        self.selected_sections,
+                    )
 
                     saved_count += 1
                     saved_files.append(str(md_path))
@@ -152,7 +169,7 @@ class LinkedInScraperGUI(QWidget):
         super().__init__()
 
         self.setWindowTitle("LinkedIn Profile Saver")
-        self.resize(820, 640)
+        self.resize(860, 720)
 
         self.login_worker = None
         self.scrape_worker = None
@@ -169,7 +186,7 @@ class LinkedInScraperGUI(QWidget):
             "https://www.linkedin.com/in/example-one/\n"
             "https://www.linkedin.com/in/example-two/"
         )
-        self.url_input.setFixedHeight(120)
+        self.url_input.setFixedHeight(115)
         layout.addWidget(self.url_input)
 
         output_row = QHBoxLayout()
@@ -197,6 +214,42 @@ class LinkedInScraperGUI(QWidget):
 
         layout.addLayout(settings_row)
 
+        section_group = QGroupBox("Sections to save")
+        section_layout = QVBoxLayout()
+
+        self.basic_checkbox = QCheckBox("Basic profile info - always included")
+        self.basic_checkbox.setChecked(True)
+        self.basic_checkbox.setEnabled(False)
+
+        self.about_checkbox = QCheckBox("About section")
+        self.about_checkbox.setChecked(True)
+
+        self.experience_checkbox = QCheckBox("Employment history")
+        self.experience_checkbox.setChecked(True)
+
+        self.education_checkbox = QCheckBox("Education")
+        self.education_checkbox.setChecked(True)
+
+        self.interests_checkbox = QCheckBox("Interests")
+        self.interests_checkbox.setChecked(False)
+
+        self.accomplishments_checkbox = QCheckBox("Accomplishments")
+        self.accomplishments_checkbox.setChecked(False)
+
+        self.contacts_checkbox = QCheckBox("Contacts")
+        self.contacts_checkbox.setChecked(False)
+
+        section_layout.addWidget(self.basic_checkbox)
+        section_layout.addWidget(self.about_checkbox)
+        section_layout.addWidget(self.experience_checkbox)
+        section_layout.addWidget(self.education_checkbox)
+        section_layout.addWidget(self.interests_checkbox)
+        section_layout.addWidget(self.accomplishments_checkbox)
+        section_layout.addWidget(self.contacts_checkbox)
+
+        section_group.setLayout(section_layout)
+        layout.addWidget(section_group)
+
         button_row = QHBoxLayout()
 
         self.login_button = QPushButton("Login to LinkedIn")
@@ -219,6 +272,16 @@ class LinkedInScraperGUI(QWidget):
         self.refresh_status()
 
         QTimer.singleShot(600, self.startup_login_prompt)
+
+    def get_selected_sections(self) -> dict:
+        return {
+            "about": self.about_checkbox.isChecked(),
+            "experiences": self.experience_checkbox.isChecked(),
+            "educations": self.education_checkbox.isChecked(),
+            "interests": self.interests_checkbox.isChecked(),
+            "accomplishments": self.accomplishments_checkbox.isChecked(),
+            "contacts": self.contacts_checkbox.isChecked(),
+        }
 
     def refresh_status(self):
         self.logged_in = Path(SESSION_PATH).exists()
@@ -291,6 +354,7 @@ class LinkedInScraperGUI(QWidget):
         profile_urls = normalize_urls(raw_urls)
         output_dir = self.output_input.text().strip()
         delay_seconds = self.delay_spinbox.value()
+        selected_sections = self.get_selected_sections()
 
         if not Path(SESSION_PATH).exists():
             QMessageBox.warning(
@@ -309,6 +373,13 @@ class LinkedInScraperGUI(QWidget):
             )
             return
 
+        if not any(selected_sections.values()):
+            QMessageBox.warning(
+                self,
+                "No optional sections selected",
+                "Only basic profile info will be saved. Select at least one optional section if you want more detail.",
+            )
+
         pasted_count = len([line for line in raw_urls.splitlines() if line.strip()])
 
         if pasted_count > MAX_URLS_PER_RUN:
@@ -319,12 +390,27 @@ class LinkedInScraperGUI(QWidget):
                 f"Only the first {MAX_URLS_PER_RUN} valid profile URLs will be used.",
             )
 
+        section_summary = ["Basic profile info"]
+        if selected_sections.get("about"):
+            section_summary.append("About")
+        if selected_sections.get("experiences"):
+            section_summary.append("Employment history")
+        if selected_sections.get("educations"):
+            section_summary.append("Education")
+        if selected_sections.get("interests"):
+            section_summary.append("Interests")
+        if selected_sections.get("accomplishments"):
+            section_summary.append("Accomplishments")
+        if selected_sections.get("contacts"):
+            section_summary.append("Contacts")
+
         confirm = QMessageBox.question(
             self,
             "Confirm batch scrape",
             f"Process {len(profile_urls)} profile URL(s) one at a time?\n\n"
             f"Delay between profiles: {delay_seconds} seconds\n"
-            f"Maximum per run: {MAX_URLS_PER_RUN}",
+            f"Maximum per run: {MAX_URLS_PER_RUN}\n\n"
+            f"Sections saved:\n- " + "\n- ".join(section_summary),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
@@ -340,6 +426,7 @@ class LinkedInScraperGUI(QWidget):
             profile_urls=profile_urls,
             output_dir=output_dir,
             delay_seconds=delay_seconds,
+            selected_sections=selected_sections,
         )
 
         self.scrape_worker.log.connect(self.log)
