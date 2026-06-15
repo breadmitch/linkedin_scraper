@@ -9,11 +9,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
+    QTextEdit,
     QLineEdit,
     QPushButton,
-    QTextEdit,
     QFileDialog,
     QMessageBox,
+    QSpinBox,
 )
 
 from linkedin_scraper import BrowserManager, PersonScraper, wait_for_manual_login
@@ -21,6 +22,28 @@ from gui_helpers import model_to_dict, save_profile_outputs
 
 
 SESSION_PATH = ".linkedin_gui_session.json"
+MAX_URLS_PER_RUN = 10
+
+
+def normalize_urls(raw_text: str) -> list[str]:
+    urls = []
+
+    for line in raw_text.splitlines():
+        line = line.strip()
+
+        if not line:
+            continue
+
+        if "linkedin.com/in/" not in line:
+            continue
+
+        # Remove obvious trailing junk
+        line = line.split()[0].strip()
+
+        if line not in urls:
+            urls.append(line)
+
+    return urls[:MAX_URLS_PER_RUN]
 
 
 class LoginWorker(QThread):
@@ -54,40 +77,74 @@ class LoginWorker(QThread):
             self.log.emit("Login session saved.")
 
 
-class ScrapeWorker(QThread):
+class BatchScrapeWorker(QThread):
     log = pyqtSignal(str)
     done = pyqtSignal(bool, str)
 
-    def __init__(self, profile_url: str, output_dir: str):
+    def __init__(self, profile_urls: list[str], output_dir: str, delay_seconds: int):
         super().__init__()
-        self.profile_url = profile_url
+        self.profile_urls = profile_urls
         self.output_dir = output_dir
+        self.delay_seconds = delay_seconds
 
     def run(self):
         try:
-            result = asyncio.run(self.scrape_profile())
+            result = asyncio.run(self.scrape_profiles())
             self.done.emit(True, result)
         except Exception as e:
             self.done.emit(False, str(e))
 
-    async def scrape_profile(self):
-        self.log.emit("Opening browser with saved login session...")
+    async def scrape_profiles(self):
+        total = len(self.profile_urls)
+        saved_count = 0
+        failed_count = 0
+        saved_files = []
+
+        self.log.emit(f"Opening browser with saved login session...")
+        self.log.emit(f"Profiles queued: {total}")
 
         async with BrowserManager(headless=False) as browser:
             await browser.load_session(SESSION_PATH)
 
-            self.log.emit("Creating profile scraper...")
             scraper = PersonScraper(browser.page)
 
-            self.log.emit(f"Scraping profile: {self.profile_url}")
-            person = await scraper.scrape(self.profile_url)
+            for index, profile_url in enumerate(self.profile_urls, start=1):
+                self.log.emit("")
+                self.log.emit(f"[{index}/{total}] Scraping: {profile_url}")
 
-            person_data = model_to_dict(person)
+                try:
+                    person = await scraper.scrape(profile_url)
+                    person_data = model_to_dict(person)
 
-            self.log.emit("Saving Markdown and JSON...")
-            md_path, json_path = save_profile_outputs(person_data, self.output_dir)
+                    md_path, json_path = save_profile_outputs(person_data, self.output_dir)
 
-            return f"Saved:\n{md_path}\n{json_path}"
+                    saved_count += 1
+                    saved_files.append(str(md_path))
+
+                    self.log.emit(f"[{index}/{total}] Saved Markdown: {md_path}")
+                    self.log.emit(f"[{index}/{total}] Saved JSON: {json_path}")
+
+                except Exception as e:
+                    failed_count += 1
+                    self.log.emit(f"[{index}/{total}] Failed: {e}")
+                    self.log.emit("Stopping batch to avoid repeated failed requests.")
+                    break
+
+                if index < total:
+                    self.log.emit(f"Waiting {self.delay_seconds} seconds before next profile...")
+                    await asyncio.sleep(self.delay_seconds)
+
+        summary = (
+            f"Batch complete.\n"
+            f"Saved: {saved_count}\n"
+            f"Failed: {failed_count}\n"
+            f"Output folder: {self.output_dir}"
+        )
+
+        if saved_files:
+            summary += "\n\nMarkdown files:\n" + "\n".join(saved_files)
+
+        return summary
 
 
 class LinkedInScraperGUI(QWidget):
@@ -95,7 +152,7 @@ class LinkedInScraperGUI(QWidget):
         super().__init__()
 
         self.setWindowTitle("LinkedIn Profile Saver")
-        self.resize(760, 520)
+        self.resize(820, 640)
 
         self.login_worker = None
         self.scrape_worker = None
@@ -106,9 +163,13 @@ class LinkedInScraperGUI(QWidget):
         self.status_label = QLabel()
         layout.addWidget(self.status_label)
 
-        layout.addWidget(QLabel("LinkedIn Profile URL"))
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("https://www.linkedin.com/in/example/")
+        layout.addWidget(QLabel("LinkedIn Profile URLs - paste 1 to 10 profile URLs, one per line"))
+        self.url_input = QTextEdit()
+        self.url_input.setPlaceholderText(
+            "https://www.linkedin.com/in/example-one/\n"
+            "https://www.linkedin.com/in/example-two/"
+        )
+        self.url_input.setFixedHeight(120)
         layout.addWidget(self.url_input)
 
         output_row = QHBoxLayout()
@@ -122,13 +183,27 @@ class LinkedInScraperGUI(QWidget):
 
         layout.addLayout(output_row)
 
+        settings_row = QHBoxLayout()
+
+        self.delay_spinbox = QSpinBox()
+        self.delay_spinbox.setMinimum(10)
+        self.delay_spinbox.setMaximum(300)
+        self.delay_spinbox.setValue(45)
+        self.delay_spinbox.setSingleStep(5)
+
+        settings_row.addWidget(QLabel("Delay between profiles, seconds:"))
+        settings_row.addWidget(self.delay_spinbox)
+        settings_row.addStretch()
+
+        layout.addLayout(settings_row)
+
         button_row = QHBoxLayout()
 
         self.login_button = QPushButton("Login to LinkedIn")
         self.login_button.clicked.connect(self.start_login)
 
-        self.scrape_button = QPushButton("Scrape One Profile")
-        self.scrape_button.clicked.connect(self.scrape_profile)
+        self.scrape_button = QPushButton("Scrape URLs")
+        self.scrape_button.clicked.connect(self.scrape_profiles)
 
         button_row.addWidget(self.login_button)
         button_row.addWidget(self.scrape_button)
@@ -149,7 +224,9 @@ class LinkedInScraperGUI(QWidget):
         self.logged_in = Path(SESSION_PATH).exists()
 
         if self.logged_in:
-            self.status_label.setText("Status: LinkedIn session found. You can scrape a profile.")
+            self.status_label.setText(
+                "Status: LinkedIn session found. You can scrape up to 10 profile URLs."
+            )
             self.scrape_button.setEnabled(True)
         else:
             self.status_label.setText("Status: Not logged in. Please log in first.")
@@ -201,7 +278,7 @@ class LinkedInScraperGUI(QWidget):
             QMessageBox.information(
                 self,
                 "Login complete",
-                "LinkedIn login complete. You can now scrape one profile at a time.",
+                "LinkedIn login complete. You can now scrape profile URLs.",
             )
         else:
             self.log(f"Login failed: {message}")
@@ -209,9 +286,11 @@ class LinkedInScraperGUI(QWidget):
 
         self.refresh_status()
 
-    def scrape_profile(self):
-        profile_url = self.url_input.text().strip()
+    def scrape_profiles(self):
+        raw_urls = self.url_input.toPlainText()
+        profile_urls = normalize_urls(raw_urls)
         output_dir = self.output_input.text().strip()
+        delay_seconds = self.delay_spinbox.value()
 
         if not Path(SESSION_PATH).exists():
             QMessageBox.warning(
@@ -222,30 +301,45 @@ class LinkedInScraperGUI(QWidget):
             self.refresh_status()
             return
 
-        if not profile_url:
+        if not profile_urls:
             QMessageBox.warning(
                 self,
-                "Missing URL",
-                "Paste a LinkedIn profile URL first.",
+                "Missing URLs",
+                "Paste between 1 and 10 LinkedIn profile URLs first.",
             )
             return
 
-        if "linkedin.com/in/" not in profile_url:
-            QMessageBox.warning(
+        pasted_count = len([line for line in raw_urls.splitlines() if line.strip()])
+
+        if pasted_count > MAX_URLS_PER_RUN:
+            QMessageBox.information(
                 self,
-                "Profile URL expected",
-                "This minimalist GUI only supports single person profile URLs.",
+                "URL limit",
+                f"This app processes a maximum of {MAX_URLS_PER_RUN} URLs per run.\n\n"
+                f"Only the first {MAX_URLS_PER_RUN} valid profile URLs will be used.",
             )
+
+        confirm = QMessageBox.question(
+            self,
+            "Confirm batch scrape",
+            f"Process {len(profile_urls)} profile URL(s) one at a time?\n\n"
+            f"Delay between profiles: {delay_seconds} seconds\n"
+            f"Maximum per run: {MAX_URLS_PER_RUN}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if confirm != QMessageBox.StandardButton.Yes:
             return
 
         self.login_button.setEnabled(False)
         self.scrape_button.setEnabled(False)
 
-        self.log("Starting profile scrape...")
+        self.log("Starting profile batch...")
 
-        self.scrape_worker = ScrapeWorker(
-            profile_url=profile_url,
+        self.scrape_worker = BatchScrapeWorker(
+            profile_urls=profile_urls,
             output_dir=output_dir,
+            delay_seconds=delay_seconds,
         )
 
         self.scrape_worker.log.connect(self.log)
@@ -257,11 +351,12 @@ class LinkedInScraperGUI(QWidget):
         self.scrape_button.setEnabled(True)
 
         if success:
+            self.log("")
             self.log(message)
-            QMessageBox.information(self, "Profile saved", message)
+            QMessageBox.information(self, "Batch complete", message)
         else:
-            self.log(f"Scrape failed: {message}")
-            QMessageBox.critical(self, "Scrape failed", message)
+            self.log(f"Batch failed: {message}")
+            QMessageBox.critical(self, "Batch failed", message)
 
         self.refresh_status()
 
